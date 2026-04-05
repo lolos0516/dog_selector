@@ -1,6 +1,7 @@
 # History files
 .Rhistory
 .Rapp.history
+*.Rproj
 
 # Session Data files
 .RData
@@ -47,3 +48,11 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Mac
+.DS_Store
+
+# don't want to share
+data/
+data_app/
+www/images

@@ -1,0 +1,122 @@
+---
+title: "Knowledge base of dog breed selector"
+format: html
+editor: visual
+---
+
+# Dog breed selector
+
+Dog breed selector is a Shiny app that helps users find dog breeds that match their preferences. The app uses data on dog breed characteristics and user preferences to recommend suitable breeds.
+
+This document serves as a knowledge base for the dog breed selector app, providing source data information used on the method.
+
+Setup
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| results: hide
+#| include: false
+
+library(kableExtra)
+library(tidyverse)
+```
+
+# Characteristics
+
+The top characteristics when one adopt a dog are
+
+-   **Energy level compatibility with the owner** including exercise needs, playfulness, and activity level
+-   **Body size** vs. living space
+-   **Temperament** calm vs. anxious, timid vs. friendly
+-   **Interpersonal compatibility** with children, family members, other pets, and strangers
+-   **Life expectancy**
+-   **Living cost** including adoption, food, equipment/garments, grooming
+-   **Health cost** including vet checkups, vaccines, treatment, insurance
+-   **Disease** hereditary diseases, breed-specific diseases, and general health issues
+-   **Train-ability** including obedience, socialization, and behavior training
+-   **Shedding** including shedding level, grooming needs, and allergies
+
+Go or no go conditions
+
+-   **Health insurance coverage** some insurance do not cover certain breeds, and some breeds may have higher premiums due to their health risks.
+-   **Breed-specific legislation** some breeds may be banned or restricted in certain areas, e.g. rental properties, due to safety concerns, which can affect the availability and legality of owning those breeds.
+
+Some of these characteristics are more important than others, and the importance may vary by individual. For example, some people may prioritize energy level compatibility and temperament over cost and health cost, while others may prioritize cost and health cost over energy level compatibility and temperament.
+
+## Energy level proxy model
+
+### Data
+
+Breed list sourced from McMillan et al. (2024).
+
+### Method
+
+The assigned `energy_level` scale is:
+
+-   **1** = low daily exercise requirement
+-   **2** = low-moderate
+-   **3** = moderate
+-   **4** = moderate-high
+-   **5** = high daily exercise requirement
+
+Each breed was assigned a proxy energy level using a structured rule based on:
+
+1.  **Breed function**
+    -   Herding, sporting, gun dog, working, and high-drive terrier breeds were generally assigned higher values.
+    -   Toy, brachycephalic, and giant low-activity companion breeds were generally assigned lower values.
+2.  **Exercise guidance from breed references**
+    -   Breeds described as needing substantial daily physical activity and engagement were placed in the higher categories.
+    -   Breeds commonly described as satisfied with shorter walks or brief play sessions were placed in the lower categories.
+3.  **Exercise-demand interpretation over pure athleticism**
+    -   The score prioritizes routine daily movement needs.
+    -   Sprinting ability alone did not force a breed into the highest category.
+
+The rules align with Canine Behavioral Assessment & Research Questionnaire (C-BARQ, U Penn) VetCompass exercise data [^1][^2] and American Kennel Club (AKC) exercise guidance[^3]. Then their energy level is normalized to a 0–1 scale for use in the app.
+
+[^1]: Duffy DL, Serpell JA. Predictive validity of a method for evaluating temperament in young guide and service dogs. Appl Anim Behav Sci. 2012;138: 99–109
+
+[^2]: https://vetapps.vet.upenn.edu/cbarq/about.cfm
+
+[^3]: https://www.akc.org/expert-advice/health/how-much-exercise-does-dog-need/
+
+### Interpretation
+
+This score is meant to reflect **daily exercise requirement**, not general athletic potential alone.
+
+That means:
+
+-   **Greyhound** should not automatically be placed in the highest group just because it is fast.
+-   **Jack Russell Terrier** can be placed high because its usual daily exercise/stimulation requirement is high.
+
+## Dog lifespan study
+
+The median lifespan by breed table comes from [^4]. In this study, the authors analyzed data from over 30,000 dogs across 74 breeds to determine the median lifespan of each breed. The table includes the breed name, median lifespan in years, and the interquartile range (IQR) of lifespan for each breed. This information is crucial for potential dog owners to consider when choosing a breed, as it can help them understand the expected lifespan and plan for the long-term care of their pet.
+
+[^4]: McMillan KM, Bielby J, Williams CL, Upjohn MM, Casey RA, Christley RM. Longevity of companion dog breeds: those at risk from early death. Sci Rep. 2024 Feb 1;14(1):531. doi: 10.1038/s41598-023-50458-w. Erratum in: Sci Rep. 2024 Apr 16;14(1):8772. doi: 10.1038/s41598-024-59331-w. PMID: 38302530; PMCID: PMC10834484.
+
+In general, the body size is negatively correlated with lifespan, meaning that larger breeds tend to have shorter lifespans compared to smaller breeds. For example, the Great Dane has a median lifespan of around 7 years, while the Chihuahua can live up to 15 years or more. However, there are exceptions to this trend, and other factors such as genetics, health care, and lifestyle can also influence a dog's lifespan.
+
+```{r dog_lifespan}
+#| echo: false
+df_lifespan <- read.csv("data/dog_lifespan_table_fixed.csv", header = T, 
+                        stringsAsFactors = F, check.names = F)
+
+kable(df_lifespan) %>% 
+  kable_minimal() %>%
+  kable_styling(full_width = F, position = "left")
+```
+
+## Space requirement
+
+The space requirement is a subjective measure that can vary based on the dog's size, energy level, and individual needs. Generally, larger breeds and those with higher energy levels may require more space to move around comfortably. For example, a Great Dane may need a larger living area and access to outdoor space for exercise, while a smaller breed like a Chihuahua may be more adaptable to apartment living. However, it's important to consider the specific needs of each dog, as some small breeds may also have high energy levels and require ample space for play and exercise.
+
+### Method
+
+Followed C-BARQ and AKC guidance, the space requirement is categorized into
+-   **Apartment friendly**: Suitable for apartment living or small indoor spaces. These breeds typically have lower energy levels and can adapt well to limited space. They also only require short daily walks.
+-   **Apartment oK**: Suitable for apartment living but may require more exercise and mental stimulation than the "Apartment friendly" category. Note that athletic breeds such as Greyhound can be placed in this category because they can be satisfied with short daily walks, even though they are fast sprinters. 
+-   **Small house with a small yard**: These breeds needs regular exercise and enjoys activity and space. Some scent hounds such as Beagle have strong roaming instinct, therefore also requires a yard.
+-   **Large house with a large yard**: These breeds typically have high energy levels and require significant daily exercise, thus need ample space to move around. Without it, they can develop behavioral issues.
+-   **Outdoor compulsory**: Best suited for homes with large yards or access to outdoor spaces. These breeds often have higher energy levels and require more room to move around and play.

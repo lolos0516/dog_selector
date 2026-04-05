@@ -1,0 +1,166 @@
+---
+title: "Breed ranking model from user preference profiles"
+format:
+  html:
+    toc: true
+---
+
+## Goal
+
+This model ranks breeds using the merged dataset with these columns:
+
+- `breed`
+- `Median.Survival`
+- `energy_raw`
+- `temperament_score`
+- `friendliness_score`
+- `trainability_score`
+- `space_category`
+
+The model is designed for user preference matching such as:
+
+- longer lifespan
+- lower or higher energy
+- calmer or less calm temperament
+- friendlier or less friendly behavior
+- easier to train
+- accommodation constraints
+
+## Design choices
+
+### 1. Space is a filter, not a ranking variable
+
+`space_category` is used to determine which breeds are feasible for the owner's accommodation.
+
+Ordered categories:
+
+1. `apartment_friendly`
+2. `apartment_ok`
+3. `small_house`
+4. `large_house`
+5. `outdoor_compulsory`
+
+Interpretation:
+
+- If the user lives in an `apartment_ok` setting, only `apartment_friendly` and `apartment_ok` breeds are eligible.
+- If the user lives in a `large_house`, then `apartment_friendly`, `apartment_ok`, `small_house`, and `large_house` breeds are eligible.
+- `outdoor_compulsory` breeds are included only when the user explicitly allows that category.
+
+This matches your requested logic that accommodation acts as a **constraint** rather than something to optimize continuously.
+
+### 2. Non-space traits are continuous ranking variables
+
+The model treats these as continuous variables:
+
+- `Median.Survival`
+- `energy_raw`
+- `temperament_score`
+- `friendliness_score`
+- `trainability_score`
+
+For each trait, the user can specify:
+
+- `"high"` = higher values preferred
+- `"low"` = lower values preferred
+- `"none"` = no concern
+
+If a trait is `"none"`, then all breeds are treated equally for that trait and it does not affect the ranking.
+
+## Ranking method
+
+For each numeric characteristic \(x\), the model first rescales it to the interval \([0,1]\):
+
+\[
+z_i = \frac{x_i - \min(x)}{\max(x) - \min(x)}
+\]
+
+If higher is better, desirability is:
+
+\[
+d_i = z_i
+\]
+
+If lower is better, desirability is:
+
+\[
+d_i = 1 - z_i
+\]
+
+If the user does not care about that trait, the trait is assigned zero effective weight and dropped from the ranking calculation.
+
+The final score for breed \(i\) is a weighted mean:
+
+\[
+\text{overall\_score}_i =
+\frac{
+w_L d_{i,L} + w_E d_{i,E} + w_T d_{i,T} + w_F d_{i,F} + w_R d_{i,R}
+}{
+w_L + w_E + w_T + w_F + w_R
+}
+\]
+
+where:
+
+- \(L\) = lifespan
+- \(E\) = energy
+- \(T\) = temperament
+- \(F\) = friendliness
+- \(R\) = trainability
+
+Traits marked `"none"` receive effective weight 0.
+
+## Why this method is appropriate
+
+- It respects feasibility constraints from accommodation first.
+- It lets the user prefer either high or low values for each trait.
+- It handles "no concern" naturally.
+- It avoids mixing space compatibility into the numeric ranking.
+
+## Example preference profiles
+
+### Example 1
+A user wants:
+
+- longer lifespan
+- lower energy
+- calm temperament
+- high friendliness
+- high trainability
+- apartment living
+
+This corresponds to:
+
+- `space_filter = "apartment_ok"`
+- `lifespan_pref = "high"`
+- `energy_pref = "low"`
+- `temperament_pref = "high"`
+- `friendliness_pref = "high"`
+- `trainability_pref = "high"`
+
+### Example 2
+A user wants:
+
+- no concern about lifespan
+- high energy
+- calm temperament
+- low friendliness
+- high trainability
+- only breeds suitable for outdoor-compulsory settings
+
+This corresponds to:
+
+- `space_filter = "outdoor_compulsory"`
+- `lifespan_pref = "none"`
+- `energy_pref = "high"`
+- `temperament_pref = "high"`
+- `friendliness_pref = "low"`
+- `trainability_pref = "high"`
+
+## Files
+
+- `rank_breeds_model.R`: R functions
+- `merged.csv`: input data
+
+## Notes
+
+This ranking model assumes the trait columns are already constructed and meaningful. It does not re-estimate the underlying breed scores; it only converts them into a user-preference ranking.

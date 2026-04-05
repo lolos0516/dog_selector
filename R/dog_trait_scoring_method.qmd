@@ -1,0 +1,189 @@
+---
+title: "Proxy scoring method for dog temperament, friendliness, and trainability"
+format:
+  html:
+    toc: true
+---
+
+## Goal
+
+Create three separate breed-level proxy scores for the same breed list used in the dog lifespan table:
+
+- `temperament_score`
+- `friendliness_score`
+- `trainability_score`
+
+These scores are **not claimed to be direct observed breed means** from an official C-BARQ release. They are **evidence-informed proxy scores** built from behavioural science concepts and breed-function priors.
+
+## Why a proxy model was needed
+
+A validated canine behaviour instrument exists: the **C-BARQ**. It provides factor scores for traits such as stranger-directed fear, dog-directed fear, separation-related behaviour, trainability, excitability, and energy level. However, a complete, clean, publicly downloadable table of breed-average C-BARQ scores for the exact lifespan-breed list was not available in this workflow.
+
+So this project uses a **transparent rule-based proxy model**.
+
+## Trait definitions used
+
+### 1. Temperament score
+Interpretation:
+
+- **High score** = calm, steady, less anxious/reactive
+- **Low score** = more fearful, excitable, or anxiety-prone
+
+The proxy temperament construct is based mainly on the inverse of these C-BARQ concepts:
+
+- stranger-directed fear
+- nonsocial fear
+- dog-directed fear
+- separation-related behaviour
+- excitability
+
+### 2. Friendliness score
+Interpretation:
+
+- **High score** = broadly friendly to children, unfamiliar people, and other pets/dogs
+- **Low score** = mainly owner-focused, aloof, reserved, or more likely to be wary/aggressive
+
+The proxy friendliness construct is based mainly on the inverse of:
+
+- stranger-directed aggression
+- stranger-directed fear
+- dog-directed aggression
+- dog-directed fear
+
+and positively on social/cooperative breed function.
+
+### 3. Trainability score
+Interpretation:
+
+- **High score** = easier to teach, more likely to attend to the owner, follow instructions, and learn tricks/obedience tasks
+- **Low score** = more independent, harder to keep engaged, or less biddable in routine obedience
+
+This follows the C-BARQ **Trainability** definition directly.
+
+## Evidence base for the scoring logic
+
+The model uses three evidence streams:
+
+1. **C-BARQ factor definitions** to decide which behavioural components belong to each trait.
+2. **Breed-function research** showing that breed differences in behaviour are real and meaningfully related to function.
+3. **Working-versus-non-working findings** showing that working breeds tend to be easier to train and less fearful, while social dogs tend to be less fearful and less aggressive.
+
+## Model structure
+
+Each breed was assigned to a behavioural archetype such as:
+
+- `companion_toy`
+- `companion_brachy`
+- `sighthound`
+- `scent_hound`
+- `herding_high_drive`
+- `retriever_social`
+- `spaniel_gundog`
+- `pointer_high_drive`
+- `terrier_feisty`
+- `spitz_primitive`
+- `guardian_mastiff`
+- `giant_working`
+- `bull_boxer`
+- `mixed_moderate`
+
+Each archetype carries three base values:
+
+- `temperament_base`
+- `friendliness_base`
+- `trainability_base`
+
+Then a small optional breed-specific adjustment is applied for obvious edge cases.
+
+### Formula
+
+For breed `i` and trait `t`:
+
+$$
+\text{score}_{i,t} = \mathrm{clip}_{[1,5]}\left(\mu_{a(i),t} + \delta_{i,t}\right)
+$$
+
+Where:
+
+- $a(i)$ = archetype assigned to breed $i$
+- $\mu_{a(i),t}$ = archetype base score for trait $t$
+- $\delta_{i,t}$ = optional breed-specific adjustment
+- $\mathrm{clip}_{[1,5]}$ = restrict the score to the 1 to 5 range
+
+## Interpretation of key archetypes
+
+### Herding / high-drive cooperative workers
+These breeds were given:
+
+- **high trainability**
+- **lower calmness**
+- **moderately high friendliness**
+
+Reason: they are selected for responsiveness and learning, but are often more alert, sensitive, and arousal-prone than calmer companion breeds.
+
+### Retrievers and social sporting dogs
+These breeds were given:
+
+- **high friendliness**
+- **high trainability**
+- **moderately high calmness**
+
+Reason: they are widely selected for social cooperation with people.
+
+### Guarding / mastiff types
+These breeds were given:
+
+- **lower friendliness**
+- **moderate trainability**
+- **moderate calmness**
+
+Reason: aloofness and territorial reserve lower broad friendliness even when the dog may be stable with its own family.
+
+### Spitz / primitive types
+These breeds were given:
+
+- **lower trainability**
+- **lower friendliness**
+- **lower calmness than companion breeds**
+
+Reason: these dogs are often more independent and less biddable in pet obedience contexts.
+
+### Companion / toy and brachycephalic companion types
+These breeds were given:
+
+- **higher calmness**
+- **higher friendliness**
+- **moderate trainability**
+
+Reason: their selection history is more strongly tied to household companionship than task performance.
+
+## Files in this workflow
+
+### Input files
+- `breed_trait_archetypes.csv`
+- `trait_archetype_scores.csv`
+- `trait_breed_overrides.csv`
+
+### Output file
+- `dog_breed_trait_scores.csv`
+
+### Calculation script
+- `build_dog_trait_scores.R`
+
+## References
+
+1. Official C-BARQ definitions  
+   URL: https://vetapps.vet.upenn.edu/cbarq/about.cfm
+
+2. MacLean EL, Snyder-Mackler N, vonHoldt BM, Serpell JA. 2019. *Highly heritable and functionally relevant breed differences in dog behavior.*  
+   URL: https://pubmed.ncbi.nlm.nih.gov/31575369/
+
+3. Asp HE, et al. 2015. *Breed differences in everyday behaviour of dogs.*  
+   Key reported highlights include:
+   - working dog breeds are more easily trained
+   - working dog breeds are less fearful than non-working dog breeds
+   - fearful dogs are more aggressive whereas more social dogs are less fearful and less aggressive  
+   URL: https://www.sciencedirect.com/science/article/abs/pii/S0168159115001240
+
+4. Balcarcel AM, et al. 2024. *Breed function and behaviour correlate with endocranial volume in domestic dogs.*  
+   URL: https://pubmed.ncbi.nlm.nih.gov/39532143/
