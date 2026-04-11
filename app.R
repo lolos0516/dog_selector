@@ -144,11 +144,11 @@ rank_breeds <- function(
 
 space_label <- function(x) {
   dplyr::case_when(
-    x == "apartment_friendly" ~ "Apartment-friendly",
-    x == "apartment_ok" ~ "Apartment OK",
-    x == "small_house" ~ "Small house + small yard",
-    x == "large_house" ~ "Large house + large yard",
-    x == "outdoor_compulsory" ~ "Outdoor compulsory",
+    x == "apartment_friendly" ~ "Apartment no balcony",
+    x == "apartment_ok" ~ "Apartment with a balcony",
+    x == "small_house" ~ "Small house and a yard",
+    x == "large_house" ~ "Large house and a yard",
+    x == "outdoor_compulsory" ~ "Ample outdoor space",
     TRUE ~ as.character(x)
   )
 }
@@ -180,15 +180,17 @@ fmt2 <- function(x) ifelse(is.na(x), "NA", sprintf("%.2f", x))
 
 
 radar_plot <- function(row_df) {
+  actual_vals <- c(
+    row_df$Median.Survival / max(20, row_df$Median.Survival, na.rm = TRUE),
+    row_df$energy_raw / 5,
+    row_df$temperament_score / 5,
+    row_df$friendliness_score / 5,
+    row_df$trainability_score / 5
+  )
+  
   plot_dat <- tibble::tibble(
     trait = c("Lifespan", "Energy", "Temperament", "Friendliness", "Trainability"),
-    value = c(
-      row_df$lifespan_match,
-      row_df$energy_match,
-      row_df$temperament_match,
-      row_df$friendliness_match,
-      row_df$trainability_match
-    )
+    value = actual_vals
   ) %>%
     mutate(
       value = tidyr::replace_na(value, 0.5),
@@ -236,14 +238,14 @@ radar_plot <- function(row_df) {
     geom_polygon(
       data = plot_dat,
       aes(x = x, y = y),
-      fill = scales::alpha("#0d6efd", 0.5),
-      colour = "#0d6efd",
+      fill = scales::alpha("#f3969a", 0.5),
+      colour = "#f3969a",
       linewidth = 1
     ) +
     geom_point(
       data = plot_dat,
       aes(x = x, y = y),
-      colour = "#0d6efd",
+      colour = "#f3969a",
       size = 2.2
     ) +
     geom_text(
@@ -310,89 +312,214 @@ theme <- bs_theme(
   heading_font = font_google("Poppins")
 )
 
+
+make_choice <- function(prefix) {
+  choices <- c("high", "none", "low")
+  
+  if (prefix == "lifespan") {
+    names(choices) <- c("Long", "No preference", "Short")
+  } else if (prefix == "energy") {
+    names(choices) <- c("High", "No preference", "Low")
+  } else if (prefix == "temperament") {
+    names(choices) <- c("Calm", "No preference", "Anxious")
+  } else if (prefix == "friendliness") {
+    names(choices) <- c("Friendly to people and pets", "No preference", "Less friendly")
+  } else if (prefix == "trainability") {
+    names(choices) <- c("Easy", "No preference", "Hard")
+  }
+  
+  choices
+}
+
+
+pref_left_label <- function(prefix) {
+  if (prefix == "lifespan") return("Short")
+  if (prefix == "energy") return("Low")
+  if (prefix == "temperament") return("Anxious")
+  if (prefix == "friendliness") return("Less friendly")
+  if (prefix == "trainability") return("Hard")
+  "Low"
+}
+
+pref_right_label <- function(prefix) {
+  if (prefix == "lifespan") return("Long")
+  if (prefix == "energy") return("High")
+  if (prefix == "temperament") return("Calm")
+  if (prefix == "friendliness") return("Friendly")
+  if (prefix == "trainability") return("Easy")
+  "High"
+}
+
+slider_pref_to_choice <- function(x) {
+  if (is.null(x) || is.na(x) || x == 0) return("none")
+  if (x > 0) return("high")
+  "low"
+}
+
 trait_controls <- function(prefix, label) {
-  tagList(
-    div(class = "border rounded-4 p-3 mb-3 bg-white",
-        h5(label, class = "mb-2"),
-        selectInput(
-          inputId = paste0(prefix, "_pref"),
-          label = "Preference",
-          choices = c("High" = "high", "None" = "none", "Low" = "low"),
-          selected = "none"
-        ),
-        checkboxInput(
-          inputId = paste0(prefix, "_important"),
-          label = "Very important",
-          value = FALSE
-        )
+  div(
+    class = "trait-row bg-dark-subtle border border-secondary-subtle",
+    div(
+      class = "trait-head",
+      div(class = "trait-title text-light", label),
+      div(
+        class = "form-check form-switch trait-switch",
+        tags$input(class = "form-check-input", type = "checkbox", role = "switch", id = paste0(prefix, "_important")),
+        tags$label(class = "form-check-label small", `for` = paste0(prefix, "_important"), "Important")
+      )
+    ),
+    div(
+      class = "trait-slider-wrap",
+      sliderInput(
+        inputId = paste0(prefix, "_pref"),
+        label = NULL,
+        min = -1,
+        max = 1,
+        value = 0,
+        step = 1,
+        ticks = FALSE,
+        width = "100%"
+      ),
+      div(
+        class = "trait-slider-labels small text-secondary-emphasis",
+        span(pref_left_label(prefix)),
+        span("No preference"),
+        span(pref_right_label(prefix))
+      )
     )
   )
 }
 
-ui <- page_fluid(
-  theme = theme,
-  tags$head(
-    tags$style(HTML("
-      body { background-color: #f7fafc; }
-      .app-title { font-weight: 700; margin-bottom: 0.2rem; }
-      .muted-note { color: #6c757d; }
-      .breed-card { border: 1px solid #e9ecef; border-radius: 1.2rem; background: white; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 0.25rem 0.8rem rgba(0,0,0,0.04); }
+ui <- page_fluid(class = "bg-dark text-light app-shell", `data-bs-theme` = "dark",
+                 theme = theme,
+                 tags$head(
+                   tags$style(HTML("
+      body.bg-dark { min-height: 100vh; }
+      .app-shell { min-height: 100vh; }
+      .app-title { font-weight: 800; margin-bottom: 0.2rem; color: #ffffff !important; }
+      .breed-card { border-radius: 1.25rem; padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; }
+      .results-card { border-radius: 1.25rem; padding: 0.7rem 0.85rem; }
+      .result-row { padding: 0.28rem 0; }
+      .result-row + .result-row { border-top: 1px solid rgba(255,255,255,0.08); }
+      .pref-card, .detail-panel { border-radius: 1.25rem; }
       .breed-pick-btn { width: 100%; text-align: left; border: none; background: transparent; padding: 0; }
-      .breed-pick-btn img { display: block; width: auto; max-width: 100%; height: auto; max-height: 220px; object-fit: contain; border-radius: 1rem; margin-bottom: 0.75rem; margin-left: auto; margin-right: auto; }
-      .breed-name { font-size: 1.15rem; font-weight: 700; color: #0d6efd; margin-bottom: 0.25rem; }
-      .score-badge { display: inline-block; background: #eef6ff; color: #0d6efd; border-radius: 999px; padding: 0.2rem 0.65rem; font-weight: 600; margin-bottom: 0.5rem; }
-      .detail-panel { border: 1px solid #e9ecef; border-radius: 1.2rem; background: white; padding: 1rem; min-height: 640px; box-shadow: 0 0.25rem 0.8rem rgba(0,0,0,0.04); }
-      .detail-panel img { display: block; width: auto; max-width: 100%; height: auto; max-height: 320px; object-fit: contain; border-radius: 1rem; margin-bottom: 0.75rem; margin-left: auto; margin-right: auto; }
-      .top-note { font-size: 0.95rem; }
+      .result-pill-wrap { display: flex; align-items: center; gap: 0; }
+      .result-avatar { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; position: relative; z-index: 2; flex: 0 0 auto; }
+      .result-bar { margin-left: -14px; flex: 1 1 auto; min-height: 62px; border-radius: 999px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 28px; }
+      .breed-name { font-size: 1.02rem; font-weight: 700; margin: 0; line-height: 1.15; }
+      .breed-meta { font-size: 0.8rem; opacity: 0.85; margin-top: 0.12rem; }
+      .score-orb { width: 62px; height: 62px; border-radius: 50%; flex: 0 0 auto; margin-left: -12px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2; }
+      .score-orb .score-rank { font-size: 1.15rem; font-weight: 800; line-height: 1; }
+      .score-orb .score-small { font-size: 0.72rem; line-height: 1.05; opacity: 0.95; margin-top: 0.12rem; }
+      .detail-panel { padding: 1rem; min-height: 640px; position: sticky; top: 12px; width: 100%; min-width: 0; }
+      .detail-panel img { display: block; width: auto; max-width: 100%; height: auto; max-height: 300px; object-fit: contain; border-radius: 1rem; margin: 0 auto 0.85rem auto; }
+      .top-note { font-size: 0.92rem; }
+      .trait-grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; }
+      .trait-row { display: grid; grid-template-columns: 1fr; gap: 0.25rem; align-items: start; padding: 0.38rem 0.55rem; border-radius: 0.9rem; }
+      .trait-title { font-weight: 700; font-size: 1rem; line-height: 1.1; margin: 0; }
+      .segmented-group { display: inline-flex; width: 100%; flex-wrap: nowrap; overflow: visible; }
+      .segmented-group .btn { flex: 1 1 auto; }
+      .form-check { margin-bottom: 0; }
+      .result-section-title { font-weight: 700; }
+      .trait-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.2rem; }
+      .trait-switch { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0; white-space: nowrap; }
+      .trait-switch .form-check-input { margin-top: 0; }
+      .trait-switch .form-check-label { font-size: 0.74rem; line-height: 1; }
+      .trait-slider-wrap .irs { max-width: 210px; margin: 0 auto; }
+      .trait-slider-wrap .irs-line, .trait-slider-wrap .irs-bar { height: 6px; }
+      .trait-slider-wrap .irs-handle { transform: scale(0.9); }
+      .pref-card .form-select { max-width: 100%; }
+      .radio-btn-group .btn { min-width: 88px; white-space: nowrap; }
+      .sidebar-card .card-header, .detail-panel h3 { font-weight: 700; }
+      .app-grid { display: grid; grid-template-columns: 430px minmax(340px, 1fr) minmax(360px, 1.1fr); gap: 1rem; align-items: start; min-width: 1210px; }
+      .app-grid > div { min-width: 0; }
+      .center-panel, .right-panel { min-width: 0; width: 100%; }
+      .app-grid-scroll { width: 100%; overflow-x: auto; overflow-y: visible; padding-bottom: 0.25rem; }
+      @media (max-width: 1400px) {
+        .app-grid { grid-template-columns: 430px minmax(320px, 1fr) minmax(340px, 1fr); min-width: 1160px; }
+      }
+      @media (max-width: 1180px) {
+        .app-grid { grid-template-columns: 400px minmax(300px, 1fr) minmax(320px, 1fr); min-width: 1080px; }
+        .detail-panel { position: static; }
+      }
+      .sidebar-wrap { width: 100%; min-width: 0; }
+      .sidebar-card { overflow: visible; }
+      .pref-card { overflow: visible; }
+      .trait-slider-wrap { min-width: 0; max-width: 210px; margin: 0 auto; }
+      .accom-wrap { display: grid; gap: 0.4rem; margin-bottom: 0.75rem; }
+      .pref-subtitle { font-weight: 700; font-size: 1rem; line-height: 1.1; margin-bottom: 0.08rem; }
+      .trait-slider-wrap .form-group { margin-bottom: 0; }
+      .trait-slider-wrap .irs, .trait-slider-wrap .js-irs-0 { margin-top: 0; }
+      .trait-slider-labels { display: flex; justify-content: space-between; gap: 0.3rem; margin-top: 0.05rem; }
+      .trait-slider-labels span:nth-child(2) { text-align: center; flex: 1; }
+      .trait-slider-labels span:first-child, .trait-slider-labels span:last-child { min-width: 62px; }
     "))
-  ),
-  div(
-    class = "py-3",
-    h1("Dog breed recommender", class = "app-title"),
-    p("Set your accommodation, choose which characteristics you prefer high / low / none, and mark any that are very important.", class = "muted-note")
-  ),
-  layout_columns(
-    col_widths = c(3, 5, 4),
-    
-    # Left controls
-    card(
-      card_header("Preferences"),
-      card_body(
-        selectInput(
-          "space_filter",
-          "Accommodation",
-          choices = c(
-            "Apartment no balcony" = "apartment_friendly",
-            "Apartment with a balcony" = "apartment_ok",
-            "Small house and back yard" = "small_house",
-            "Large house and back yard" = "large_house",
-            "Ample outdoor space" = "outdoor_compulsory"
-          ),
-          selected = "small_house"
-        ),
-        trait_controls("lifespan", "Lifespan"),
-        trait_controls("energy", "Energy"),
-        trait_controls("temperament", "Temperament"),
-        trait_controls("friendliness", "Friendliness"),
-        trait_controls("trainability", "Trainability"),
-        actionButton("submit_btn", "Find breeds", class = "btn-primary btn-lg w-100")
-      )
-    ),
-    
-    # Center results
-    div(
-      p("Top ranked breeds are shown below. The radar plot uses standardized match scores for your current preferences.", class = "muted-note top-note"),
-      uiOutput("top5_ui"),
-      div(class = "d-grid gap-2 mb-3", actionButton("expand_btn", "Expand to show ranks 6–10", class = "btn-outline-secondary")),
-      uiOutput("top610_ui")
-    ),
-    
-    # Right details
-    div(
-      class = "detail-panel",
-      uiOutput("detail_ui")
-    )
-  )
+                 ),
+                 div(
+                   class = "py-3",
+                   h1("Dog breed recommender", class = "app-title"),
+                   p("Set your accommodation, choose which characteristics you prefer high / low / none, and mark any that are very important.", class = "text-secondary-emphasis")
+                 ),
+                 div(
+                   class = "app-grid-scroll",
+                   div(
+                     class = "app-grid",
+                     
+                     div(
+                       class = "sidebar-wrap",
+                       card(
+                         class = "sidebar-card bg-dark text-light border-secondary-subtle",
+                         card_header(class = "bg-primary text-white", "Preferences"),
+                         card_body(
+                           div(
+                             class = "pref-card bg-dark text-light",
+                             div(
+                               class = "accom-wrap",
+                               div(class = "pref-subtitle text-light", "Accommodation"),
+                               selectInput(
+                                 "space_filter",
+                                 label = NULL,
+                                 choices = c(
+                                   "Apartment no balcony" = "apartment_friendly",
+                                   "Apartment with a balcony" = "apartment_ok",
+                                   "Small house and a yard" = "small_house",
+                                   "Large house and a yard" = "large_house",
+                                   "Ample outdoor space" = "outdoor_compulsory"
+                                 ),
+                                 selected = "small_house"
+                               )
+                             ),
+                             div(
+                               class = "trait-grid",
+                               trait_controls("lifespan", "Lifespan"),
+                               trait_controls("energy", "Energy"),
+                               trait_controls("temperament", "Temperament"),
+                               trait_controls("friendliness", "Friendliness"),
+                               trait_controls("trainability", "Trainability")
+                             ),
+                             div(class = "d-grid mt-3", actionButton("submit_btn", "Find breeds", class = "btn btn-primary btn-lg w-100"))
+                           )
+                         )
+                       )
+                     ),
+                     
+                     div(
+                       class = "center-panel",
+                       p("Top ranked breeds are shown below. Click a breed card to view detailed information and the radar plot on the right.", class = "text-secondary-emphasis top-note"),
+                       uiOutput("top5_ui"),
+                       div(class = "d-grid gap-2 mb-3", uiOutput("expand_btn_ui")),
+                       uiOutput("top610_ui")
+                     ),
+                     
+                     div(
+                       class = "right-panel",
+                       div(
+                         class = "detail-panel card bg-dark border-secondary-subtle text-light",
+                         uiOutput("detail_ui")
+                       )
+                     )
+                   )
+                 )
 )
 
 # =========================
@@ -422,11 +549,11 @@ server <- function(input, output, session) {
     rank_breeds(
       data = dogs,
       space_filter = input$space_filter,
-      lifespan_pref = input$lifespan_pref,
-      energy_pref = input$energy_pref,
-      temperament_pref = input$temperament_pref,
-      friendliness_pref = input$friendliness_pref,
-      trainability_pref = input$trainability_pref,
+      lifespan_pref = slider_pref_to_choice(input$lifespan_pref),
+      energy_pref = slider_pref_to_choice(input$energy_pref),
+      temperament_pref = slider_pref_to_choice(input$temperament_pref),
+      friendliness_pref = slider_pref_to_choice(input$friendliness_pref),
+      trainability_pref = slider_pref_to_choice(input$trainability_pref),
       weights = build_weights(),
       top_n = 10
     )
@@ -436,51 +563,54 @@ server <- function(input, output, session) {
     if (nrow(ranked()) > 0) selected_breed(ranked()$breed[[1]])
   })
   
+  
+  output$expand_btn_ui <- renderUI({
+    if (input$submit_btn < 1) return(NULL)
+    req(ranked())
+    if (nrow(ranked()) <= 5) return(NULL)
+    actionButton(
+      "expand_btn",
+      if (show_more()) "less" else "more",
+      class = "btn btn-outline-secondary"
+    )
+  })
+  
   make_card_ui <- function(df, id_prefix) {
-    tagList(
-      lapply(seq_len(nrow(df)), function(i) {
-        row <- df[i, , drop = FALSE]
-        info <- get_breed_assets(row$breed[[1]])
-        plotname <- paste0(id_prefix, "_plot_", i)
-        btnid <- paste0(id_prefix, "_pick_", i)
-        
-        card_ui <- div(
-          class = "breed-card",
-          actionButton(
-            inputId = btnid,
-            label = HTML(sprintf(
-              '<div style="height:220px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="%s" alt="%s"></div><div class="breed-name">%s</div>',
-              info$image, row$breed[[1]], row$breed[[1]]
-            )),
-            class = "breed-pick-btn"
-          ),
-          div(class = "score-badge", paste("Overall score", fmt2(row$overall_score[[1]]))),
-          p(
-            HTML(sprintf(
-              "<strong>Rank:</strong> %s &nbsp; | &nbsp; <strong>Space:</strong> %s",
-              row$rank[[1]], space_label(row$space_category[[1]])
-            ))
-          ),
-          plotOutput(plotname, height = "220px")
-        )
-        
-        local({
-          ii <- i
-          local_plotname <- plotname
-          local_btnid <- btnid
-          local_row <- row
+    div(
+      class = "results-card card bg-dark border-secondary-subtle text-light",
+      tagList(
+        lapply(seq_len(nrow(df)), function(i) {
+          row <- df[i, , drop = FALSE]
+          info <- get_breed_assets(row$breed[[1]])
+          btnid <- paste0(id_prefix, "_pick_", i)
           
-          output[[local_plotname]] <- renderPlot({
-            radar_plot(local_row)
+          row_ui <- div(
+            class = "result-row",
+            actionButton(
+              inputId = btnid,
+              label = HTML(sprintf(
+                '<div class="result-pill-wrap"><img class="result-avatar border border-3 border-primary-subtle bg-dark-subtle" src="%s" alt="%s"><div class="result-bar bg-primary-subtle border border-primary-subtle text-light"><div><div class="breed-name">%s</div></div></div><div class="score-orb bg-primary text-white border border-3 border-primary-subtle"><div class="score-rank">%s</div><div class="score-small">%s</div></div></div>',
+                info$image,
+                row$breed[[1]],
+                row$breed[[1]],
+                row$rank[[1]],
+                fmt2(row$overall_score[[1]])
+              )),
+              class = "breed-pick-btn"
+            )
+          )
+          
+          local({
+            local_btnid <- btnid
+            local_row <- row
+            observeEvent(input[[local_btnid]], {
+              selected_breed(local_row$breed[[1]])
+            }, ignoreInit = TRUE)
           })
           
-          observeEvent(input[[local_btnid]], {
-            selected_breed(local_row$breed[[1]])
-          }, ignoreInit = TRUE)
+          row_ui
         })
-        
-        card_ui
-      })
+      )
     )
   }
   
@@ -496,9 +626,18 @@ server <- function(input, output, session) {
     more <- ranked() %>% slice(6:min(10, n()))
     if (nrow(more) == 0) return(NULL)
     tagList(
-      h4("More breeds", class = "mt-3 mb-3"),
       make_card_ui(more, "more")
     )
+  })
+  
+  
+  output$detail_radar <- renderPlot({
+    req(ranked())
+    breed <- selected_breed()
+    req(!is.null(breed))
+    row <- ranked() %>% filter(breed == !!breed) %>% slice(1)
+    req(nrow(row) == 1)
+    radar_plot(row)
   })
   
   output$detail_ui <- renderUI({
@@ -520,13 +659,15 @@ server <- function(input, output, session) {
     tagList(
       h3(row$breed[[1]]),
       tags$img(src = info$image, alt = row$breed[[1]]),
-      p(HTML(sprintf("<strong>Overall score:</strong> %s", fmt2(row$overall_score[[1]])))),
+      plotOutput("detail_radar", height = "300px"),
+      tags$br(),
+      p(HTML(sprintf("<strong>Overall score:</strong> %s/1.00", fmt2(row$overall_score[[1]])))),
       tags$ul(
         tags$li(HTML(sprintf("<strong>Median lifespan:</strong> %s years", fmt1(row$Median.Survival[[1]])))),
-        tags$li(HTML(sprintf("<strong>Energy:</strong> %s (%s)", fmt1(row$energy_raw[[1]]), energy_label(row$energy_raw[[1]])))),
-        tags$li(HTML(sprintf("<strong>Temperament:</strong> %s (%s)", fmt1(row$temperament_score[[1]]), trait_label(row$temperament_score[[1]])))),
-        tags$li(HTML(sprintf("<strong>Friendliness:</strong> %s (%s)", fmt1(row$friendliness_score[[1]]), trait_label(row$friendliness_score[[1]])))),
-        tags$li(HTML(sprintf("<strong>Trainability:</strong> %s (%s)", fmt1(row$trainability_score[[1]]), trait_label(row$trainability_score[[1]])))),
+        tags$li(HTML(sprintf("<strong>Energy:</strong> %s/5.0 (%s)", fmt1(row$energy_raw[[1]]), energy_label(row$energy_raw[[1]])))),
+        tags$li(HTML(sprintf("<strong>Temperament:</strong> %s/5.0 (%s)", fmt1(row$temperament_score[[1]]), trait_label(row$temperament_score[[1]])))),
+        tags$li(HTML(sprintf("<strong>Friendliness:</strong> %s/5.0 (%s)", fmt1(row$friendliness_score[[1]]), trait_label(row$friendliness_score[[1]])))),
+        tags$li(HTML(sprintf("<strong>Trainability:</strong> %s/5.0 (%s)", fmt1(row$trainability_score[[1]]), trait_label(row$trainability_score[[1]])))),
         tags$li(HTML(sprintf("<strong>Accommodation:</strong> %s", space_label(row$space_category[[1]]))))
       ),
       HTML(paste0("<p>", gsub("\n", "<br><br>", as.character(intro)), "</p>"))
